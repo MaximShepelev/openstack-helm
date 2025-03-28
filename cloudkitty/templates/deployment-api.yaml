@@ -1,0 +1,150 @@
+{{/*
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/}}
+
+{{- define "probeTemplate" }}
+{{- $health_path := tuple "rating" "healthcheck" "internal" . | include "helm-toolkit.endpoints.keystone_endpoint_path_lookup" }}
+httpGet:
+  scheme: {{ tuple "rating" "service" "api" . | include "helm-toolkit.endpoints.keystone_endpoint_scheme_lookup" | upper }}
+  path: {{ $health_path }}
+  port: {{ tuple "rating" "service" "api" . | include "helm-toolkit.endpoints.endpoint_port_lookup" }}
+{{- end }}
+
+{{- if .Values.manifests.deployment_api }}
+{{- $envAll := . }}
+
+{{- $mounts_cloudkitty_api := .Values.pod.mounts.cloudkitty_api.cloudkitty_api }}
+{{- $mounts_cloudkitty_api_init := .Values.pod.mounts.cloudkitty_api.init_container }}
+
+{{- $serviceAccountName := "cloudkitty-api" }}
+{{ tuple $envAll "api" $serviceAccountName | include "helm-toolkit.snippets.kubernetes_pod_rbac_serviceaccount" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudkitty-api
+  annotations:
+    {{ tuple $envAll | include "helm-toolkit.snippets.release_uuid" }}
+  labels:
+{{ tuple $envAll "cloudkitty" "api" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 4 }}
+spec:
+  replicas: {{ .Values.pod.replicas.api }}
+  selector:
+    matchLabels:
+{{ tuple $envAll "cloudkitty" "api" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 6 }}
+{{ tuple $envAll | include "helm-toolkit.snippets.kubernetes_upgrades_deployment" | indent 2 }}
+  template:
+    metadata:
+      labels:
+{{ tuple $envAll "cloudkitty" "api" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 8 }}
+      annotations:
+{{ tuple $envAll | include "helm-toolkit.snippets.release_uuid" | indent 8 }}
+        configmap-bin-hash: {{ tuple "configmap-bin.yaml" . | include "helm-toolkit.utils.hash" }}
+        configmap-etc-hash: {{ tuple "configmap-etc.yaml" . | include "helm-toolkit.utils.hash" }}
+{{ tuple "cloudkitty_api" . | include "helm-toolkit.snippets.custom_pod_annotations" | indent 8 }}
+{{ dict "envAll" $envAll "podName" "cloudkitty-api" "containerNames" (list "init" "cloudkitty-api") | include "helm-toolkit.snippets.kubernetes_mandatory_access_control_annotation" | indent 8 }}
+    spec:
+{{ dict "envAll" $envAll "application" "cloudkitty" | include "helm-toolkit.snippets.kubernetes_pod_security_context" | indent 6 }}
+      serviceAccountName: {{ $serviceAccountName }}
+      affinity:
+{{ tuple $envAll "cloudkitty" "api" | include "helm-toolkit.snippets.kubernetes_pod_anti_affinity" | indent 8 }}
+      nodeSelector:
+        {{ .Values.labels.api.node_selector_key }}: {{ .Values.labels.api.node_selector_value }}
+{{ if $envAll.Values.pod.tolerations.cloudkitty.enabled }}
+{{ tuple $envAll "cloudkitty" | include "helm-toolkit.snippets.kubernetes_tolerations" | indent 6 }}
+{{ end }}
+      initContainers:
+{{ tuple $envAll "api" $mounts_cloudkitty_api_init | include "helm-toolkit.snippets.kubernetes_entrypoint_init_container" | indent 8 }}
+      containers:
+        - name: cloudkitty-api
+{{ tuple $envAll "cloudkitty_api" | include "helm-toolkit.snippets.image" | indent 10 }}
+{{ tuple $envAll $envAll.Values.pod.resources.api | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
+{{ dict "envAll" $envAll "application" "cloudkitty" "container" "cloudkitty_api" | include "helm-toolkit.snippets.kubernetes_container_security_context" | indent 10 }}
+{{ dict "envAll" $envAll "component" "api" "container" "cloudkitty-api" "type" "readiness" "probeTemplate" (include "probeTemplate" $envAll | fromYaml) | include "helm-toolkit.snippets.kubernetes_probe" | indent 10 }}
+{{ dict "envAll" $envAll "component" "api" "container" "cloudkitty-api" "type" "liveness" "probeTemplate" (include "probeTemplate" $envAll | fromYaml) | include "helm-toolkit.snippets.kubernetes_probe" | indent 10 }}
+          command:
+            - /tmp/cloudkitty-api.sh
+            - start
+          env:
+{{- if or .Values.manifests.certificates .Values.tls.identity }}
+            - name: REQUESTS_CA_BUNDLE
+              value: "/etc/cloudkitty/certs/ca.crt"
+{{- end }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /tmp/cloudkitty.sh
+                  - stop
+          ports:
+            - name: cloudkitty-api
+              containerPort: {{ tuple "rating" "service" "api" . | include "helm-toolkit.endpoints.endpoint_port_lookup" }}
+          volumeMounts:
+            - name: pod-tmp
+              mountPath: /tmp
+            - name: etccloudkitty
+              mountPath: /etc/cloudkitty
+            - name: cloudkitty-etc
+              mountPath: /etc/cloudkitty/cloudkitty-api-uwsgi.ini
+              subPath: cloudkitty-api-uwsgi.ini
+              readOnly: true
+            - name: cloudkitty-etc
+              mountPath: /etc/cloudkitty/cloudkitty.conf
+              subPath: cloudkitty.conf
+              readOnly: true
+            {{- if .Values.conf.cloudkitty.DEFAULT.log_config_append }}
+            - name: cloudkitty-etc
+              mountPath: {{ .Values.conf.cloudkitty.DEFAULT.log_config_append }}
+              subPath: {{ base .Values.conf.cloudkitty.DEFAULT.log_config_append }}
+              readOnly: true
+            {{- end }}
+            - name: cloudkitty-etc
+              mountPath: /etc/cloudkitty/api_paste.ini
+              subPath: cloudkitty-api-paste.ini
+              readOnly: true
+            - name: cloudkitty-etc
+              mountPath: /etc/cloudkitty/policy.yaml
+              subPath: policy.yaml
+              readOnly: true
+            - name: cloudkitty-etc
+              mountPath: /etc/cloudkitty/metrics.yml
+              subPath: metrics.yml
+              readOnly: true
+            - name: cloudkitty-bin
+              mountPath: /tmp/cloudkitty-api.sh
+              subPath: cloudkitty-api.sh
+              readOnly: true
+{{- dict "enabled" .Values.tls.oslo_db "name" .Values.endpoints.oslo_db.auth.admin.secret.tls.internal "path" "/etc/mysql/certs" | include "helm-toolkit.snippets.tls_volume_mount" | indent 12 }}
+{{- dict "enabled" .Values.tls.identity "name" .Values.secrets.tls.rating.api.internal "path" "/etc/cloudkitty/certs" | include "helm-toolkit.snippets.tls_volume_mount" | indent 12 }}
+{{- dict "enabled" $envAll.Values.tls.oslo_messaging "name" $envAll.Values.endpoints.oslo_messaging.auth.admin.secret.tls.internal "path" "/etc/rabbitmq/certs" | include "helm-toolkit.snippets.tls_volume_mount" | indent 12 }}
+
+{{ if $mounts_cloudkitty_api.volumeMounts }}{{ toYaml $mounts_cloudkitty_api.volumeMounts | indent 12 }}{{ end }}
+      volumes:
+        - name: pod-tmp
+          emptyDir: {}
+        - name: etccloudkitty
+          emptyDir: {}
+        - name: cloudkitty-etc
+          secret:
+            secretName: cloudkitty-etc
+            defaultMode: 0444
+        - name: cloudkitty-bin
+          configMap:
+            name: cloudkitty-bin
+            defaultMode: 0555
+{{- dict "enabled" .Values.tls.oslo_db "name" .Values.endpoints.oslo_db.auth.admin.secret.tls.internal | include "helm-toolkit.snippets.tls_volume" | indent 8 }}
+{{- dict "enabled" .Values.tls.identity "name" .Values.secrets.tls.rating.api.internal | include "helm-toolkit.snippets.tls_volume" | indent 8 }}
+{{- dict "enabled" $envAll.Values.tls.oslo_messaging "name" $envAll.Values.endpoints.oslo_messaging.auth.admin.secret.tls.internal | include "helm-toolkit.snippets.tls_volume" | indent 8 }}
+
+{{ if $mounts_cloudkitty_api.volumes }}{{ toYaml $mounts_cloudkitty_api.volumes | indent 8 }}{{ end }}
+{{- end }}

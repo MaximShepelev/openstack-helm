@@ -1,0 +1,131 @@
+{{/*
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/}}
+
+{{- if .Values.manifests.job_storage_init }}
+{{- $envAll := . }}
+
+{{- $serviceAccountName := "cloudkitty-storage-init" }}
+{{ tuple $envAll "storage_init" $serviceAccountName | include "helm-toolkit.snippets.kubernetes_pod_rbac_serviceaccount" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $serviceAccountName }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - create
+      - update
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $serviceAccountName }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $serviceAccountName }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $serviceAccountName }}
+    namespace: {{ $envAll.Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cloudkitty-storage-init
+  labels:
+{{ tuple $envAll "cloudkitty" "storage-init" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+{{ tuple $envAll "cloudkitty" "storage-init" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 8 }}
+    spec:
+      serviceAccountName: {{ $serviceAccountName }}
+      restartPolicy: OnFailure
+      nodeSelector:
+        {{ .Values.labels.job.node_selector_key }}: {{ .Values.labels.job.node_selector_value }}
+{{ if $envAll.Values.pod.tolerations.cloudkitty.enabled }}
+{{ tuple $envAll "cloudkitty" | include "helm-toolkit.snippets.kubernetes_tolerations" | indent 6 }}
+{{ end }}
+      containers:
+        - name: cloudkitty-storage-init
+{{ tuple $envAll "cloudkitty_storage_init" | include "helm-toolkit.snippets.image" | indent 10 }}
+{{ tuple $envAll $envAll.Values.pod.resources.jobs.storage_init | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
+          env:
+{{- if or .Values.manifests.certificates .Values.tls.identity }}
+            - name: REQUESTS_CA_BUNDLE
+              value: "/etc/cloudkitty/certs/ca.crt"
+{{- end }}
+          command:
+            - /tmp/storage-init.sh
+          volumeMounts:
+            - name: pod-tmp
+              mountPath: /tmp
+            - name: etccloudkitty
+              mountPath: /etc/cloudkitty
+            - name: cloudkitty-etc
+              mountPath: /etc/cloudkitty/cloudkitty-api-uwsgi.ini
+              subPath: cloudkitty-api-uwsgi.ini
+              readOnly: true
+            - name: cloudkitty-etc
+              mountPath: /etc/cloudkitty/cloudkitty.conf
+              subPath: cloudkitty.conf
+              readOnly: true
+            {{- if .Values.conf.cloudkitty.DEFAULT.log_config_append }}
+            - name: cloudkitty-etc
+              mountPath: {{ .Values.conf.cloudkitty.DEFAULT.log_config_append }}
+              subPath: {{ base .Values.conf.cloudkitty.DEFAULT.log_config_append }}
+              readOnly: true
+            {{- end }}
+            - name: cloudkitty-etc
+              mountPath: /etc/cloudkitty/api_paste.ini
+              subPath: cloudkitty-api-paste.ini
+              readOnly: true
+            - name: cloudkitty-etc
+              mountPath: /etc/cloudkitty/policy.yaml
+              subPath: policy.yaml
+              readOnly: true
+            - name: cloudkitty-etc
+              mountPath: /etc/cloudkitty/metrics.yml
+              subPath: metrics.yml
+              readOnly: true
+            - name: cloudkitty-bin
+              mountPath: /tmp/storage-init.sh
+              subPath: storage-init.sh
+              readOnly: true
+{{- dict "enabled" .Values.tls.oslo_db "name" .Values.endpoints.oslo_db.auth.admin.secret.tls.internal "path" "/etc/mysql/certs" | include "helm-toolkit.snippets.tls_volume_mount" | indent 12 }}
+{{- dict "enabled" .Values.tls.identity "name" .Values.secrets.tls.rating.api.internal "path" "/etc/cloudkitty/certs" | include "helm-toolkit.snippets.tls_volume_mount" | indent 12 }}
+      volumes:
+        - name: pod-tmp
+          emptyDir: {}
+        - name: etccloudkitty
+          emptyDir: {}
+        - name: cloudkitty-etc
+          secret:
+            secretName: cloudkitty-etc
+            defaultMode: 0444
+        - name: cloudkitty-bin
+          configMap:
+            name: cloudkitty-bin
+            defaultMode: 0555
+{{- dict "enabled" .Values.tls.oslo_db "name" .Values.endpoints.oslo_db.auth.admin.secret.tls.internal | include "helm-toolkit.snippets.tls_volume" | indent 8 }}
+{{- dict "enabled" .Values.tls.identity "name" .Values.secrets.tls.rating.api.internal | include "helm-toolkit.snippets.tls_volume" | indent 8 }}
+{{- end }}

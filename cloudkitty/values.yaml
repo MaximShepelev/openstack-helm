@@ -1,0 +1,900 @@
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Default values for cloudkitty.
+# This is a YAML-formatted file.
+# Declare name/value pairs to be passed into your templates.
+# name: value
+
+---
+labels:
+  api:
+    node_selector_key: openstack-control-plane
+    node_selector_value: enabled
+  processor:
+    node_selector_key: openstack-control-plane
+    node_selector_value: enabled
+  job:
+    node_selector_key: openstack-control-plane
+    node_selector_value: enabled
+  test:
+    node_selector_key: openstack-control-plane
+    node_selector_value: enabled
+
+release_group: null
+
+images:
+  tags:
+    test: docker.io/xrally/xrally-openstack:2.0.0
+    db_init: docker.io/openstackhelm/heat:2024.2-ubuntu_jammy
+    db_drop: docker.io/openstackhelm/heat:2024.2-ubuntu_jammy
+    rabbit_init: docker.io/rabbitmq:3.13-management
+    ks_user: docker.io/openstackhelm/heat:2024.2-ubuntu_jammy
+    ks_service: docker.io/openstackhelm/heat:2024.2-ubuntu_jammy
+    ks_endpoints: docker.io/openstackhelm/heat:2024.2-ubuntu_jammy
+    bootstrap: docker.io/openstackhelm/heat:2024.2-ubuntu_jammy
+
+    cloudkitty_storage_init: docker.io/kolla/cloudkitty-base:2024.2-ubuntu-noble
+    cloudkitty_db_sync: docker.io/kolla/cloudkitty-base:2024.2-ubuntu-noble
+    cloudkitty_api: docker.io/kolla/cloudkitty-api:2024.2-ubuntu-noble
+    cloudkitty_processor: docker.io/kolla/cloudkitty-processor:2024.2-ubuntu-noble
+
+    dep_check: quay.io/airshipit/kubernetes-entrypoint:latest-ubuntu_focal
+    image_repo_sync: docker.io/docker:17.07.0
+
+  pull_policy: "IfNotPresent"
+  local_registry:
+    active: false
+    exclude:
+      - dep_check
+      - image_repo_sync
+
+pod:
+  security_context:
+    cloudkitty_api:
+      pod:
+        runAsUser: 42424
+      container:
+        cloudkitty_api:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+    cloudkitty_processor:
+      pod:
+        runAsUser: 42424
+      container:
+        cloudkitty_api:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+    test:
+      pod:
+        runAsUser: 42424
+      container:
+        cloudkitty_test:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+  affinity:
+    anti:
+      type:
+        default: preferredDuringSchedulingIgnoredDuringExecution
+      topologyKey:
+        default: kubernetes.io/hostname
+      weight:
+        default: 10
+  tolerations:
+    cloudkitty:
+      enabled: false
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+  mounts:
+    cloudkitty_api:
+      init_container: null
+      cloudkitty_api:
+        volumeMounts:
+        volumes:
+    cloudkitty_processor:
+      init_container: null
+      cloudkitty_processor:
+        volumeMounts:
+        volumes:
+    cloudkitty_bootstrap:
+      init_container: null
+      cloudkitty_bootstrap:
+        volumeMounts:
+        volumes:
+    cloudkitty_tests:
+      init_container: null
+      cloudkitty_tests:
+        volumeMounts:
+        volumes:
+    cloudkitty_db_sync:
+      cloudkitty_db_sync:
+        volumeMounts:
+        volumes:
+  replicas:
+    api: 1
+    processor: 1
+  lifecycle:
+    upgrades:
+      deployments:
+        revision_history: 3
+        pod_replacement_strategy: RollingUpdate
+        rolling_update:
+          max_unavailable: 1
+          max_surge: 3
+    disruption_budget:
+      api:
+        min_available: 0
+      processor:
+        min_available: 0
+    termination_grace_period:
+      api:
+        timeout: 30
+  probes:
+    api:
+      cloudkitty-api:
+        readiness:
+          enabled: true
+          params:
+            periodSeconds: 10
+            timeoutSeconds: 5
+        liveness:
+          enabled: true
+          params:
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+  resources:
+    enabled: false
+    api:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "1024Mi"
+        cpu: "2000m"
+    processor:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "1024Mi"
+        cpu: "2000m"
+    jobs:
+      bootstrap:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "1024Mi"
+          cpu: "2000m"
+      db_init:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "1024Mi"
+          cpu: "2000m"
+      db_sync:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "1024Mi"
+          cpu: "2000m"
+      db_drop:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "1024Mi"
+          cpu: "2000m"
+      rabbit_init:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "1024Mi"
+          cpu: "2000m"
+      ks_endpoints:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "1024Mi"
+          cpu: "2000m"
+      ks_service:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "1024Mi"
+          cpu: "2000m"
+      ks_user:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "1024Mi"
+          cpu: "2000m"
+      tests:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "1024Mi"
+          cpu: "2000m"
+      image_repo_sync:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "1024Mi"
+          cpu: "2000m"
+
+network:
+  api:
+    ingress:
+      public: true
+      classes:
+        namespace: "nginx"
+        cluster: "nginx-cluster"
+      annotations:
+        nginx.ingress.kubernetes.io/rewrite-target: /
+    port: 8889
+    node_port:
+      enabled: false
+      port: 30889
+
+network_policy:
+  cloudkitty:
+    ingress:
+      - {}
+    egress:
+      - {}
+
+bootstrap:
+  enabled: false
+  ks_user: cloudkitty
+  script: |
+    openstack token issue
+
+dependencies:
+  dynamic:
+    common:
+      local_image_registry:
+        jobs:
+          - cloudkitty-image-repo-sync
+        services:
+          - endpoint: node
+            service: local_image_registry
+  static:
+    api:
+      jobs:
+        - cloudkitty-db-sync
+        - cloudkitty-ks-user
+        - cloudkitty-ks-endpoints
+        - cloudkitty-rabbit-init
+        - cloudkitty-storage-init
+      services:
+        - endpoint: internal
+          service: oslo_db
+        - endpoint: internal
+          service: identity
+        - endpoint: internal
+          service: oslo_messaging
+    processor:
+      jobs:
+        - cloudkitty-db-sync
+        - cloudkitty-ks-user
+        - cloudkitty-ks-endpoints
+        - cloudkitty-rabbit-init
+        - cloudkitty-storage-init
+      services:
+        - endpoint: internal
+          service: identity
+        - endpoint: internal
+          service: rating
+    db_drop:
+      services:
+        - endpoint: internal
+          service: oslo_db
+    db_init:
+      services:
+        - endpoint: internal
+          service: oslo_db
+    storage_init:
+      jobs:
+        - cloudkitty-db-init
+      services:
+        - endpoint: internal
+          service: oslo_db
+    db_sync:
+      jobs:
+        - cloudkitty-db-init
+        - cloudkitty-storage-init
+      services:
+        - endpoint: internal
+          service: oslo_db
+    image_repo_sync:
+      services:
+        - endpoint: internal
+          service: local_image_registry
+    ks_endpoints:
+      jobs:
+        - cloudkitty-ks-service
+      services:
+        - endpoint: internal
+          service: identity
+    ks_service:
+      services:
+        - endpoint: internal
+          service: identity
+    ks_user:
+      services:
+        - endpoint: internal
+          service: identity
+    rabbit_init:
+      services:
+        - endpoint: internal
+          service: oslo_messaging
+
+conf:
+  paste:
+    pipeline:cloudkitty+noauth:
+      pipeline: cors healthcheck http_proxy_to_wsgi request_id ck_api
+    pipeline:cloudkitty+keystone:
+      pipeline: cors healthcheck http_proxy_to_wsgi request_id authtoken ck_api
+    app:ck_api:
+      paste.app_factory: cloudkitty.api.app:app_factory
+    filter:authtoken:
+      acl_public_routes: /, /v1, /v2, /healthcheck
+      paste.filter_factory: cloudkitty.api.middleware:AuthTokenMiddleware.factory
+    filter:request_id:
+      paste.filter_factory: oslo_middleware:RequestId.factory
+    filter:cors:
+      paste.filter_factory: oslo_middleware.cors:filter_factory
+      oslo_config_project: cloudkitty
+    filter:healthcheck:
+      paste.filter_factory: oslo_middleware:Healthcheck.factory
+      backends: disable_by_file
+      disable_by_file_path: /etc/cloudkitty/healthcheck_disable
+    filter:http_proxy_to_wsgi:
+      paste.filter_factory: oslo_middleware.http_proxy_to_wsgi:HTTPProxyToWSGI.factory
+      oslo_config_project: cloudkitty
+  policy: {}
+  cloudkitty_api_uwsgi:
+    uwsgi:
+      add-header: "Connection: close"
+      buffer-size: 65535
+      die-on-term: true
+      enable-threads: true
+      exit-on-reload: false
+      hook-master-start: unix_signal:15 gracefully_kill_them_all
+      lazy-apps: true
+      log-x-forwarded-for: true
+      master: true
+      procname-prefix-spaced: "cloudkitty-api:"
+      route-user-agent: '^kube-probe.* donotlog:'
+      thunder-lock: true
+      worker-reload-mercy: 80
+      wsgi-file: /var/lib/kolla/venv/bin/cloudkitty-api # /var/lib/openstack/bin/cloudkitty-wsgi-api
+      processes: 1
+  cloudkitty:
+    DEFAULT:
+      api_paste_config: api_paste.ini
+      auth_strategy: keystone
+      log_config_append: /etc/cloudkitty/logging.conf
+    collect:
+      collector: gnocchi
+      period: 3600
+      wait_periods: 2
+      metrics_conf: /etc/cloudkitty/metrics.yml
+      scope_key: project_id
+    collector_gnocchi:
+      gnocchi_auth_type: keystone
+      gnocchi_user: null
+      gnocchi_endpoint: null
+      interface: internalURL
+      region_name: RegionOne
+      http_pool_maxsize: 10
+    collector_prometheus:
+      prometheus_url: null
+      prometheus_user: null
+      prometheus_password: null
+      cafile: null
+      insecure: false
+    database:
+      max_retries: -1
+    fetcher:
+      backend: keystone
+    fetcher_gnocchi:
+      scope_attribute: project_id
+      resource_types: generic
+      gnocchi_auth_type: keystone
+      gnocchi_user: null
+      gnocchi_endpoint: null
+      interface: internalURL
+      region_name: RegionOne
+      http_pool_maxsize: 10
+      auth_type: null
+      auth_section: null
+    fetcher_keystone:
+      keystone_version: 3
+      ignore_rating_role: false
+      ignore_disabled_tenants: false
+    fetcher_prometheus:
+      metric: null
+      scope_attribute: project_id
+      prometheus_url: null
+      prometheus_user: null
+      prometheus_password: null
+      cafile: null
+      insecure: false
+      filters: null
+    fetcher_source:
+      sources: null
+    keystone_authtoken:
+      service_token_roles: service
+      service_token_roles_required: true
+      auth_version: v3
+      auth_type: password
+      memcache_security_strategy: ENCRYPT
+      service_type: rating
+    orchestrator:
+      coordination_url: file:///var/lib/cloudkitty/locks
+      max_workers: 4
+      max_workers_reprocessing: 8
+      max_threads: 20
+    oslo_concurrency:
+      lock_path: "/var/lib/cloudkitty/tmp"
+    oslo_messaging_notifications:
+      driver: messagingv2
+    oslo_messaging_rabbit:
+      rabbit_ha_queues: true
+    oslo_middleware:
+      enable_proxy_headers_parsing: true
+    oslo_policy:
+      policy_file: /etc/cloudkitty/policy.yaml
+    output:
+      backend: cloudkitty.backend.file.FileBackend
+      basepath: /var/lib/cloudkitty/states/
+      pipeline: osrf
+    state:
+      backend: cloudkitty.backend.file.FileBackend
+      basepath: /var/lib/cloudkitty/states/
+    storage:
+      backend: influxdb
+      version: 2
+    storage_elasticsearch:
+      host: http://localhost:9200
+      index_name: cloudkitty
+      insecure: false
+      cafile: null
+      scroll_duration: 30
+    storage_gnocchi:
+      interface: internalURL
+      archive_policy_name: rating
+      archive_policy_definition: '[{"granularity": 3600, "timespan": "90 days"}, {"granularity": 86400, "timespan": "360 days"}, {"granularity": 2592000, "timespan": "1800 days"}]'
+    storage_influxdb:
+      username: null
+      password: null
+      database: null
+      retention_policy: autogen
+      host: localhost
+      port: 8086
+      use_ssl: false
+      insecure: false
+      cafile: null
+      version: 1
+      query_timeout: 3600000
+      token: null
+      org: openstack
+      bucket: cloudkitty
+      url: null
+    storage_opensearch:
+      host: http://localhost:9200
+      index_name: cloudkitty
+      insecure: false
+      cafile: null
+      scroll_duration: 30
+  metrics:
+    metrics:
+      cpu:
+        unit: instance
+        alt_name: instance
+        groupby:
+          - id
+          - user_id
+          - project_id
+        metadata:
+          - flavor_name
+          - flavor_id
+          - vcpus
+        mutate: NUMBOOL
+        extra_args:
+          aggregation_method: mean
+          resource_type: instance
+          force_granularity: 300
+
+      image.size:
+        unit: MiB
+        factor: 1/1048576
+        groupby:
+          - id
+          - user_id
+          - project_id
+        metadata:
+          - container_format
+          - disk_format
+        extra_args:
+          aggregation_method: mean
+          resource_type: image
+
+      volume.size:
+        unit: GiB
+        groupby:
+          - id
+          - user_id
+          - project_id
+        metadata:
+          - volume_type
+        extra_args:
+          aggregation_method: mean
+          resource_type: volume
+          force_granularity: 300
+
+      network.outgoing.bytes.rate:
+        unit: MB
+        groupby:
+          - id
+          - project_id
+          - user_id
+        # Converting B/s to MB/h
+        factor: 3600/1000000
+        metadata:
+          - instance_id
+        extra_args:
+          aggregation_method: mean
+          resource_type: instance_network_interface
+
+      network.incoming.bytes.rate:
+        unit: MB
+        groupby:
+          - id
+          - project_id
+          - user_id
+        # Converting B/s to MB/h
+        factor: 3600/1000000
+        metadata:
+          - instance_id
+        extra_args:
+          aggregation_method: mean
+          resource_type: instance_network_interface
+
+      ip.floating:
+        unit: ip
+        groupby:
+          - id
+          - user_id
+          - project_id
+        metadata:
+          - state
+        mutate: NUMBOOL
+        extra_args:
+          aggregation_method: mean
+          resource_type: network
+
+      radosgw.objects.size:
+        unit: GiB
+        groupby:
+          - id
+          - user_id
+          - project_id
+        factor: 1/1073741824
+        extra_args:
+          aggregation_method: mean
+          resource_type: ceph_account
+  logging:
+    loggers:
+      keys:
+        - root
+        - cloudkitty
+    handlers:
+      keys:
+        - stdout
+        - stderr
+        - "null"
+    formatters:
+      keys:
+        - context
+        - default
+    logger_root:
+      level: WARNING
+      handlers: 'null'
+    logger_cloudkitty:
+      level: INFO
+      handlers:
+        - stdout
+      qualname: cloudkitty
+    logger_amqp:
+      level: WARNING
+      handlers: stderr
+      qualname: amqp
+    logger_amqplib:
+      level: WARNING
+      handlers: stderr
+      qualname: amqplib
+    logger_eventletwsgi:
+      level: WARNING
+      handlers: stderr
+      qualname: eventlet.wsgi.server
+    logger_sqlalchemy:
+      level: WARNING
+      handlers: stderr
+      qualname: sqlalchemy
+    logger_boto:
+      level: WARNING
+      handlers: stderr
+      qualname: boto
+    handler_null:
+      class: logging.NullHandler
+      formatter: default
+      args: ()
+    handler_stdout:
+      class: StreamHandler
+      args: (sys.stdout,)
+      formatter: context
+    handler_stderr:
+      class: StreamHandler
+      args: (sys.stderr,)
+      formatter: context
+    formatter_context:
+      class: oslo_log.formatters.ContextFormatter
+      datefmt: "%Y-%m-%d %H:%M:%S"
+    formatter_default:
+      format: "%(message)s"
+      datefmt: "%Y-%m-%d %H:%M:%S"
+
+# Names of secrets used by bootstrap and environmental checks
+secrets:
+  identity:
+    admin: cloudkitty-keystone-admin
+    cloudkitty: cloudkitty-keystone-user
+    test: cloudkitty-keystone-test
+  oslo_db:
+    admin: cloudkitty-db-admin
+    cloudkitty: cloudkitty-db-user
+  oslo_messaging:
+    admin: cloudkitty-rabbitmq-admin
+    cloudkitty: cloudkitty-rabbitmq-user
+  tls:
+    rating:
+      api:
+        public: cloudkitty-tls-public
+        internal: cloudkitty-tls-internal
+  oci_image_registry:
+    cloudkitty: cloudkitty-oci-image-registry
+
+endpoints:
+  cluster_domain_suffix: cluster.local
+  local_image_registry:
+    name: docker-registry
+    namespace: docker-registry
+    hosts:
+      default: localhost
+      internal: docker-registry
+      node: localhost
+    host_fqdn_override:
+      default: null
+    port:
+      registry:
+        node: 5000
+  oci_image_registry:
+    name: oci-image-registry
+    namespace: oci-image-registry
+    auth:
+      enabled: false
+      cloudkitty:
+        username: cloudkitty
+        password: password
+    hosts:
+      default: localhost
+    host_fqdn_override:
+      default: null
+    port:
+      registry:
+        default: null
+  identity:
+    name: keystone
+    auth:
+      admin:
+        region_name: RegionOne
+        username: admin
+        password: password
+        project_name: admin
+        user_domain_name: default
+        project_domain_name: default
+      cloudkitty:
+        role: admin
+        region_name: RegionOne
+        username: cloudkitty
+        password: password
+        project_name: service
+        user_domain_name: service
+        project_domain_name: service
+    hosts:
+      default: keystone
+      internal: keystone-api
+    host_fqdn_override:
+      default: null
+    path:
+      default: /v3
+    scheme:
+      default: http
+    port:
+      api:
+        default: 80
+        internal: 5000
+  rating:
+    name: cloudkitty
+    hosts:
+      default: cloudkitty-api
+      admin: cloudkitty
+      public: cloudkitty
+    host_fqdn_override:
+      default: null
+    path:
+      default: /
+      # healthcheck: /healthcheck
+    scheme:
+      default: http
+    port:
+      api:
+        default: 8889
+        public: 80
+        # service: 8889
+  oslo_db:
+    auth:
+      admin:
+        username: root
+        password: password
+        secret:
+          tls:
+            internal: mariadb-tls-direct
+      cloudkitty:
+        username: cloudkitty
+        password: password
+    hosts:
+      default: mariadb
+    host_fqdn_override:
+      default: null
+    path: /cloudkitty
+    scheme: mysql+pymysql
+    port:
+      mysql:
+        default: 3306
+  oslo_messaging:
+    auth:
+      admin:
+        username: rabbitmq
+        password: password
+        secret:
+          tls:
+            internal: rabbitmq-tls-direct
+      cloudkitty:
+        username: cloudkitty
+        password: password
+    statefulset:
+      replicas: 2
+      name: rabbitmq-rabbitmq
+    hosts:
+      default: rabbitmq
+    host_fqdn_override:
+      default: null
+    path: /cloudkitty
+    scheme: rabbit
+    port:
+      amqp:
+        default: 5672
+      http:
+        default: 15672
+  oslo_cache:
+    auth:
+      # NOTE(portdirect): this is used to define the value for keystone
+      # authtoken cache encryption key, if not set it will be populated
+      # automatically with a random value, but to take advantage of
+      # this feature all services should be set to use the same key,
+      # and memcache service.
+      memcache_secret_key: null
+    hosts:
+      default: memcached
+    host_fqdn_override:
+      default: null
+    port:
+      memcache:
+        default: 11211
+  fluentd:
+    namespace: null
+    name: fluentd
+    hosts:
+      default: fluentd-logging
+    host_fqdn_override:
+      default: null
+    path:
+      default: null
+    scheme: 'http'
+    port:
+      service:
+        default: 24224
+      metrics:
+        default: 24220
+  kube_dns:
+    namespace: kube-system
+    name: kubernetes-dns
+    hosts:
+      default: kube-dns
+    host_fqdn_override:
+      default: null
+    path:
+      default: null
+    scheme: http
+    port:
+      dns:
+        default: 53
+        protocol: UDP
+  ingress:
+    namespace: null
+    name: ingress
+    hosts:
+      default: ingress
+    port:
+      ingress:
+        default: 80
+
+tls:
+  identity: false
+  oslo_messaging: false
+  oslo_db: false
+
+manifests:
+  certificates: false
+  configmap_bin: true
+  configmap_etc: true
+  deployment_api: true
+  deployment_processor: true
+  ingress_api: true
+  job_bootstrap: true
+  job_db_init: true
+  job_db_sync: true
+  job_storage_init: true
+  job_db_drop: false
+  job_image_repo_sync: true
+  job_rabbit_init: true
+  job_ks_endpoints: true
+  job_ks_service: true
+  job_ks_user: true
+  pdb_api: true
+  pod_test: true
+  secret_db: true
+  network_policy: false
+  secret_ingress_tls: true
+  secret_keystone: true
+  secret_rabbitmq: true
+  secret_registry: true
+  service_ingress_api: true
+  service_api: true
+...
